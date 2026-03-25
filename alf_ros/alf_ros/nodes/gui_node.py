@@ -10,8 +10,8 @@ from typing import Any, Optional
 try:
     import rclpy
     from rclpy.node import Node
-    from std_msgs.msg import String, Bool, Float32
-    from sensor_msgs.msg import JointState
+    from std_msgs.msg import String, Bool
+    from sensor_msgs.msg import JointState, BatteryState
     from geometry_msgs.msg import Twist
 
     HAS_ROS = True
@@ -125,8 +125,8 @@ if HAS_ROS:
                 JointState, f"{prefix}/joint_states", self._on_joint_states, 10
             )
             self._battery_sub = self.create_subscription(
-                Float32,
-                f"{prefix}/battery_state/percentage",
+                BatteryState,
+                f"{prefix}/battery_state",
                 self._on_battery,
                 10,
             )
@@ -147,7 +147,7 @@ if HAS_ROS:
                 self._window.log("DEBUG", f"Odebrano stany stawów: {len(states)} stawów")
 
         def _on_battery(self, msg: Any) -> None:
-            self._battery_level = msg.data * 100.0
+            self._battery_level = msg.percentage * 100.0
             self._connected = True
             if self._window:
                 self._window.robot_panel.update_battery(self._battery_level)
