@@ -116,6 +116,7 @@ if HAS_ROS:
                 "lie_down": self._cmd_lie_down,
                 "home_position": self._cmd_home_position,
                 "idle": self._cmd_idle,
+                "walk": self._cmd_walk,
             }.get(command)
 
             if handler:
@@ -154,6 +155,12 @@ if HAS_ROS:
         def _cmd_idle(self) -> None:
             self._current_mode = "IDLE"
             self.get_logger().info("Executing: idle mode")
+            self._publish_status()
+
+        def _cmd_walk(self) -> None:
+            """Switch the robot to walking mode and publish the updated status."""
+            self._current_mode = "WALKING"
+            self.get_logger().info("Executing: walk mode")
             self._publish_status()
 
         def _send_joint_command(self, positions: dict[str, float]) -> None:
