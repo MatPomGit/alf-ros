@@ -106,6 +106,10 @@ if HAS_ROS:
                 return
 
             command = msg.data.strip().lower()
+            if command not in ROBOT_MODES:
+                self.get_logger().warn(f"Unknown command: {command}")
+                return
+
             self.get_logger().info(f"Received command: {command}")
             handler = {
                 "stand": self._cmd_stand,
@@ -116,8 +120,6 @@ if HAS_ROS:
 
             if handler:
                 handler()
-            else:
-                self.get_logger().warn(f"Unknown command: {command}")
 
         def _on_estop(self, msg: Bool) -> None:
             if msg.data:

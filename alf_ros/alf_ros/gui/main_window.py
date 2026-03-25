@@ -211,6 +211,7 @@ class ActionPanel(QWidget):
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self._active_server: str = ""
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -267,14 +268,15 @@ class ActionPanel(QWidget):
         server = self.action_server_input.text().strip()
         goal = self.goal_input.text().strip()
         if server and goal:
+            self._active_server = server
             self.btn_send_goal.setEnabled(False)
             self.btn_cancel_goal.setEnabled(True)
             self.status_label.setText("Status: Wysyłanie celu...")
             self.send_goal_requested.emit(server, goal)
 
     def _on_cancel_goal(self) -> None:
-        server = self.action_server_input.text().strip()
-        self.cancel_goal_requested.emit(server)
+        self.cancel_goal_requested.emit(self._active_server)
+        self._active_server = ""
         self.btn_send_goal.setEnabled(True)
         self.btn_cancel_goal.setEnabled(False)
         self.status_label.setText("Status: Anulowano")

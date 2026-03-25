@@ -235,7 +235,7 @@ def main(args: Optional[list[str]] = None) -> None:
         return
 
     app = QApplication(sys.argv)
-    from alf_ros.gui.main_window import MainWindow
+    from ..gui.main_window import MainWindow
 
     bridge = ROSBridge(node)
     window = MainWindow(ros_bridge=bridge)
