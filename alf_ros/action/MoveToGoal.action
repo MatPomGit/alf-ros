@@ -1,0 +1,13 @@
+# Move to a target pose goal definition
+geometry_msgs/Pose target_pose
+float32 velocity_limit
+---
+# Result
+bool success
+string message
+float32 final_distance
+---
+# Feedback
+float32 current_distance
+float32 progress_percent
+string status_message

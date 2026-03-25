@@ -1,0 +1,5 @@
+# Service to set robot operating mode
+string mode
+---
+bool success
+string message
