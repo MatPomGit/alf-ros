@@ -4,3 +4,11 @@
 numpy>=1.26
 opencv-python-headless>=4.9
 Pillow>=10.3
+
+# ROS2 Python dependencies (install via rosdep or apt)
+# rclpy — provided by ROS2 installation
+# std_msgs, sensor_msgs, geometry_msgs — provided by ros-humble-common-interfaces
+# rviz2 — provided by ros-humble-rviz2
+
+# Python packages for ALF-ROS GUI (install via pip)
+PyQt5>=5.15.0

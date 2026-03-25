@@ -1,0 +1,25 @@
+# ALF-ROS configuration parameters
+# Compatible with both laptop and Unitree G1 EDU
+
+alf_ros_controller:
+  ros__parameters:
+    robot_namespace: ""
+    publish_rate_hz: 50.0
+    max_linear_vel: 0.5      # m/s — safe limit for G1 EDU
+    max_angular_vel: 1.0     # rad/s
+
+alf_ros_gui:
+  ros__parameters:
+    robot_namespace: ""
+    update_rate_hz: 10.0
+
+alf_ros_monitor:
+  ros__parameters:
+    robot_namespace: ""
+
+# Unitree G1 EDU specific overrides (use with robot_namespace:="g1")
+# alf_ros_controller:
+#   ros__parameters:
+#     robot_namespace: "g1"
+#     max_linear_vel: 0.3
+#     max_angular_vel: 0.8
