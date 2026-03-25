@@ -165,12 +165,19 @@ if HAS_ROS:
         def publish_string(self, topic: str, message: str) -> None:
             """Publish a string message to a topic.
 
+            Creates a publisher on demand and caches it for reuse.
+
             Args:
                 topic: Topic name.
                 message: String payload.
             """
+            if not hasattr(self, "_string_publishers"):
+                self._string_publishers: dict[str, Any] = {}
+            if topic not in self._string_publishers:
+                self._string_publishers[topic] = self.create_publisher(String, topic, 10)
             msg = String()
             msg.data = message
+            self._string_publishers[topic].publish(msg)
             self.get_logger().info(f"Publishing to {topic}: {message}")
 
         def send_robot_command(self, command: str) -> None:

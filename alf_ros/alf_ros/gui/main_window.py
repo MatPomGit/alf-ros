@@ -418,7 +418,7 @@ class RobotStatusPanel(QWidget):
                 row = QHBoxLayout()
                 name_lbl = QLabel(name)
                 name_lbl.setMinimumWidth(150)
-                val_lbl: QLabel = QLabel()
+                val_lbl = QLabel()
                 row.addWidget(name_lbl)
                 row.addStretch()
                 row.addWidget(val_lbl)

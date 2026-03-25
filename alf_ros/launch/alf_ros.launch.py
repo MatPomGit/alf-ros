@@ -2,6 +2,7 @@
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, LogInfo
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -20,11 +21,13 @@ def generate_launch_description() -> LaunchDescription:
     )
     use_rviz_arg = DeclareLaunchArgument(
         "use_rviz",
-        default_value="true",
-        description="Whether to launch RViz2",
+        default_value="false",
+        description="Whether to launch RViz2 together with the main nodes",
     )
 
     robot_namespace = LaunchConfiguration("robot_namespace")
+    use_gui = LaunchConfiguration("use_gui")
+    use_rviz = LaunchConfiguration("use_rviz")
 
     controller_node = Node(
         package="alf_ros",
@@ -56,6 +59,15 @@ def generate_launch_description() -> LaunchDescription:
         parameters=[{"robot_namespace": robot_namespace}],
         output="screen",
         emulate_tty=True,
+        condition=IfCondition(use_gui),
+    )
+
+    rviz_node = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2",
+        output="screen",
+        condition=IfCondition(use_rviz),
     )
 
     return LaunchDescription([
@@ -66,4 +78,5 @@ def generate_launch_description() -> LaunchDescription:
         controller_node,
         monitor_node,
         gui_node,
+        rviz_node,
     ])

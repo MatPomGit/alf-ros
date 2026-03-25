@@ -17,14 +17,16 @@ except ImportError:
     HAS_ROS = False
     Node = object  # type: ignore[assignment,misc]
 
+from alf_ros.alf_ros.cli.feedback import ANSI_COLORS
+
 logger = logging.getLogger(__name__)
 
-BOLD = "\033[1m"
-GREEN = "\033[92m"
-YELLOW = "\033[93m"
-RED = "\033[91m"
-CYAN = "\033[96m"
-RESET = "\033[0m"
+BOLD = ANSI_COLORS["BOLD"]
+GREEN = ANSI_COLORS["GREEN"]
+YELLOW = ANSI_COLORS["YELLOW"]
+RED = ANSI_COLORS["RED"]
+CYAN = ANSI_COLORS["CYAN"]
+RESET = ANSI_COLORS["RESET"]
 
 if HAS_ROS:
 

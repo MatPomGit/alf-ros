@@ -19,7 +19,7 @@ try:
     if not QApplication.instance():
         _app = QApplication(sys.argv)
     _QT_AVAILABLE = True
-except Exception:
+except (ImportError, RuntimeError):
     pass
 
 
