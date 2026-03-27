@@ -4,20 +4,19 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Optional
 
 try:
     import rclpy
     from rclpy.node import Node
-    from std_msgs.msg import String, Bool
-    from sensor_msgs.msg import JointState, BatteryState
+    from sensor_msgs.msg import BatteryState, JointState
+    from std_msgs.msg import Bool, String
 
     HAS_ROS = True
 except ImportError:
     HAS_ROS = False
     Node = object  # type: ignore[assignment,misc]
 
-from alf_ros.alf_ros.cli.feedback import colorize, print_banner, print_joint_states, print_robot_status
+from alf_ros.cli.feedback import colorize, print_banner, print_joint_states
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +66,7 @@ if HAS_ROS:
                 print(colorize("[OK] Stop awaryjny wyłączony", "GREEN"), flush=True)
 
         def _on_joint_states(self, msg: JointState) -> None:
-            joint_states = dict(zip(msg.name, msg.position))
+            joint_states = dict(zip(msg.name, msg.position, strict=False))
             print_joint_states(joint_states)
 
         def _on_battery(self, msg: BatteryState) -> None:
@@ -76,7 +75,7 @@ if HAS_ROS:
             print(colorize(f"[BATERIA] {pct:.1f}%", bat_color, bold=True), flush=True)
 
 
-def main(args: Optional[list[str]] = None) -> None:
+def main(args: list[str] | None = None) -> None:
     """Entry point for the status monitor node."""
     if not HAS_ROS:
         print("ERROR: rclpy is not installed. Cannot start ROS2 node.")

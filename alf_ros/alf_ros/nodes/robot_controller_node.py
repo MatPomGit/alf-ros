@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Optional
 
 try:
     import rclpy
-    from rclpy.node import Node
-    from std_msgs.msg import String, Bool
     from geometry_msgs.msg import Twist
+    from rclpy.node import Node
     from sensor_msgs.msg import JointState
+    from std_msgs.msg import Bool, String
 
     HAS_ROS = True
 except ImportError:
@@ -79,6 +78,7 @@ if HAS_ROS:
             self._estop_active: bool = False
             self._max_linear = float(self.get_parameter("max_linear_vel").value)
             self._max_angular = float(self.get_parameter("max_angular_vel").value)
+            self._publish_rate_hz = float(self.get_parameter("publish_rate_hz").value)
 
             self._status_pub = self.create_publisher(
                 String, f"{prefix}/alf_ros/status", 10
@@ -95,7 +95,8 @@ if HAS_ROS:
                 Bool, f"{prefix}/alf_ros/emergency_stop", self._on_estop, 10
             )
 
-            self._status_timer = self.create_timer(1.0, self._publish_status)
+            timer_period = 1.0 / self._publish_rate_hz if self._publish_rate_hz > 0.0 else 1.0
+            self._status_timer = self.create_timer(timer_period, self._publish_status)
 
             self.get_logger().info("Robot controller node initialized")
             self._publish_status()
@@ -160,6 +161,10 @@ if HAS_ROS:
         def _cmd_walk(self) -> None:
             """Switch the robot to walking mode and publish the updated status."""
             self._current_mode = "WALKING"
+            twist = Twist()
+            twist.linear.x = self._max_linear
+            twist.angular.z = 0.0
+            self._cmd_vel_pub.publish(twist)
             self.get_logger().info("Executing: walk mode")
             self._publish_status()
 
@@ -176,7 +181,7 @@ if HAS_ROS:
             self._status_pub.publish(msg)
 
 
-def main(args: Optional[list[str]] = None) -> None:
+def main(args: list[str] | None = None) -> None:
     """Entry point for the robot controller node."""
     if not HAS_ROS:
         print("ERROR: rclpy is not installed. Cannot start ROS2 node.")
