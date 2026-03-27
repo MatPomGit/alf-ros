@@ -1,9 +1,5 @@
-# Podstawowe zależności projektu
-# Zainstaluj środowisko deweloperskie: pip install -e ".[dev]"
-
-numpy>=1.26
-opencv-python-headless>=4.9
-Pillow>=10.3
+# Zależności projektu ALF-ROS
+# Zainstaluj: pip install -r requirements.txt
 
 # ROS2 Python dependencies (install via rosdep or apt)
 # rclpy — provided by ROS2 installation
