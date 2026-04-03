@@ -139,6 +139,23 @@ class TestGUINodeBatterySubscription:
         source = _get_source("alf_ros.alf_ros.nodes.gui_node")
         assert "msg.percentage" in source
 
+    def test_compute_update_period_returns_inverse_rate(self) -> None:
+        """_compute_update_period should return the inverse of positive frequency."""
+        from alf_ros.alf_ros.nodes.gui_node import _compute_update_period
+
+        assert _compute_update_period(10.0) == 0.1
+
+    def test_compute_update_period_rejects_non_positive_rate(self) -> None:
+        """_compute_update_period must raise ValueError for invalid update rates."""
+        from alf_ros.alf_ros.nodes.gui_node import _compute_update_period
+
+        for invalid_rate in (0.0, -1.0):
+            try:
+                _compute_update_period(invalid_rate)
+            except ValueError:
+                continue
+            raise AssertionError("Expected ValueError for non-positive update rate")
+
 
 class TestRobotControllerWalkHandler:
     """Tests that the walk command is wired to a proper handler."""
@@ -225,4 +242,3 @@ class TestRobotControllerWalkHandler:
         msg.data = "walk"
         fake._on_command(msg)
         assert called == ["walk"]
-
