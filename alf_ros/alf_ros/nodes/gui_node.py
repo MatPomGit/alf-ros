@@ -55,6 +55,23 @@ JOINT_NAMES_G1 = [
 ]
 
 
+def _compute_update_period(update_rate_hz: float) -> float:
+    """Compute a safe GUI refresh timer period.
+
+    Args:
+        update_rate_hz: Desired GUI update rate in hertz.
+
+    Returns:
+        Timer period in seconds.
+
+    Raises:
+        ValueError: If ``update_rate_hz`` is not positive.
+    """
+    if update_rate_hz <= 0.0:
+        raise ValueError("update_rate_hz must be > 0.0")
+    return 1.0 / update_rate_hz
+
+
 class ROSBridge:
     """Bridge between the Qt GUI and the ROS2 node."""
 
@@ -135,7 +152,8 @@ if HAS_ROS:
             )
 
             rate = float(self.get_parameter("update_rate_hz").value)
-            self._update_timer = self.create_timer(1.0 / rate, self._update_gui)
+            timer_period = _compute_update_period(rate)
+            self._update_timer = self.create_timer(timer_period, self._update_gui)
 
             self.get_logger().info("GUI node initialized")
 
