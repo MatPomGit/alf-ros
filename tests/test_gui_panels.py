@@ -103,6 +103,14 @@ def robot_panel(qt_app):
 
 
 @pytest.fixture
+def graph_panel(qt_app):
+    """Create a fresh GraphPanel instance."""
+    from alf_ros.alf_ros.gui.main_window import GraphPanel
+
+    return GraphPanel()
+
+
+@pytest.fixture
 def main_window(qt_app):
     """Create a MainWindow without a ROS bridge."""
     from alf_ros.alf_ros.gui.main_window import MainWindow
@@ -333,6 +341,49 @@ class TestRobotStatusPanel:
 
 
 # ---------------------------------------------------------------------------
+# GraphPanel tests
+# ---------------------------------------------------------------------------
+
+
+class TestGraphPanel:
+    """Tests for the GraphPanel widget."""
+
+    def test_initial_graph_list_empty(self, graph_panel) -> None:
+        assert graph_panel.graph_list.count() == 0
+
+    def test_update_graph_populates_rows(self, graph_panel) -> None:
+        graph_panel.update_graph([("/cmd_vel", "geometry_msgs/msg/Twist", 1, 2)])
+        assert graph_panel.graph_list.count() == 1
+
+    def test_namespace_filter_limits_rows(self, graph_panel) -> None:
+        graph_panel.update_graph(
+            [
+                ("/robot/cmd_vel", "geometry_msgs/msg/Twist", 1, 1),
+                ("/diagnostics", "std_msgs/msg/String", 1, 0),
+            ]
+        )
+        graph_panel.namespace_filter.setText("/robot")
+        assert graph_panel.graph_list.count() == 1
+
+    def test_message_type_filter_limits_rows(self, graph_panel) -> None:
+        graph_panel.update_graph(
+            [
+                ("/robot/cmd_vel", "geometry_msgs/msg/Twist", 1, 1),
+                ("/diagnostics", "std_msgs/msg/String", 1, 0),
+            ]
+        )
+        graph_panel.message_type_filter.setText("std_msgs")
+        assert graph_panel.graph_list.count() == 1
+
+    def test_pause_toggle_emits_signal(self, graph_panel) -> None:
+        states: list[bool] = []
+        graph_panel.refresh_paused_changed.connect(states.append)
+        graph_panel.btn_pause.click()
+        graph_panel.btn_pause.click()
+        assert states == [True, False]
+
+
+# ---------------------------------------------------------------------------
 # MainWindow integration tests
 # ---------------------------------------------------------------------------
 
@@ -344,7 +395,7 @@ class TestMainWindow:
         assert "ALF-ROS" in main_window.windowTitle()
 
     def test_four_tabs_present(self, main_window) -> None:
-        assert main_window.tabs.count() == 4
+        assert main_window.tabs.count() == 5
 
     def test_log_method_adds_to_panel(self, main_window) -> None:
         main_window.log("INFO", "integration test message")

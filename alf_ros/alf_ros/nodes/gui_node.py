@@ -98,6 +98,54 @@ class ROSBridge:
         raw = self._node.get_topic_names_and_types()
         return [(name, types[0] if types else "?") for name, types in raw]
 
+    def get_service_names_and_types(self) -> list[tuple[str, str]]:
+        """Return list of (service_name, type) tuples."""
+        raw = self._node.get_service_names_and_types()
+        return [(name, types[0] if types else "?") for name, types in raw]
+
+    def get_action_names_and_types(self) -> list[tuple[str, str]]:
+        """Return list of (action_name, type) tuples."""
+        getter = getattr(self._node, "get_action_names_and_types", None)
+        if getter is None:
+            return []
+        raw = getter()
+        return [(name, types[0] if types else "?") for name, types in raw]
+
+    def get_publishers_info_by_topic(self, topic: str) -> list[dict[str, str]]:
+        """Return publishers metadata for a topic."""
+        infos = self._node.get_publishers_info_by_topic(topic)
+        return [self._format_endpoint_info(info) for info in infos]
+
+    def get_subscribers_info_by_topic(self, topic: str) -> list[dict[str, str]]:
+        """Return subscribers metadata for a topic."""
+        infos = self._node.get_subscriptions_info_by_topic(topic)
+        return [self._format_endpoint_info(info) for info in infos]
+
+    def get_topic_graph(self) -> list[tuple[str, str, int, int]]:
+        """Return graph rows: topic, type, publisher count, subscriber count."""
+        topics = self.get_topic_names_and_types()
+        graph_data: list[tuple[str, str, int, int]] = []
+        for topic, msg_type in topics:
+            publishers = self.get_publishers_info_by_topic(topic)
+            subscribers = self.get_subscribers_info_by_topic(topic)
+            graph_data.append((topic, msg_type, len(publishers), len(subscribers)))
+        return graph_data
+
+    @staticmethod
+    def _format_endpoint_info(info: Any) -> dict[str, str]:
+        """Convert ROS topic endpoint info to a serializable dictionary."""
+        qos_profile = getattr(info, "qos_profile", None)
+        reliability = getattr(qos_profile, "reliability", None)
+        durability = getattr(qos_profile, "durability", None)
+        return {
+            "node_name": str(getattr(info, "node_name", "")),
+            "node_namespace": str(getattr(info, "node_namespace", "")),
+            "topic_type": str(getattr(info, "topic_type", "")),
+            "endpoint_type": str(getattr(info, "endpoint_type", "")),
+            "qos_reliability": str(reliability) if reliability is not None else "",
+            "qos_durability": str(durability) if durability is not None else "",
+        }
+
     def echo_topic(self, topic: str) -> None:
         """Start dynamic echo for a topic."""
         self._node.start_topic_echo(topic)
