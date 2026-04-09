@@ -19,12 +19,17 @@ try:
     from geometry_msgs.msg import Twist
     from rosidl_runtime_py.convert import message_to_ordereddict
     from rosidl_runtime_py.utilities import get_message
+    from rosidl_runtime_py.set_message import set_message_fields
     from .qos_utils import build_qos_profile, log_network_settings, qos_profile_to_text
 
     HAS_ROS = True
 except ImportError:
     HAS_ROS = False
     Node = object  # type: ignore[assignment,misc]
+
+    def set_message_fields(_msg: Any, _values: dict[str, Any]) -> None:
+        """Fallback no-op used only when rosidl helpers are unavailable."""
+        return
 
 try:
     from PyQt5.QtWidgets import QApplication
@@ -160,7 +165,17 @@ class ROSBridge:
 
     def publish_to_topic(self, topic: str, message: str) -> None:
         """Publish a string message to a topic."""
+        publisher = getattr(self._node, "publish_generic", None)
+        if callable(publisher):
+            publisher(topic, message)
+            return
         self._node.publish_string(topic, message)
+
+    def set_runtime_mode(self, mode: str) -> None:
+        """Set GUI bridge runtime mode (LIVE or SIMULATED)."""
+        setter = getattr(self._node, "set_runtime_mode", None)
+        if callable(setter):
+            setter(mode)
 
     def send_action_goal(self, server: str, goal: str) -> None:
         """Send an action goal."""
@@ -196,6 +211,7 @@ if HAS_ROS:
             )
             self._topic_last_log_time: dict[str, float] = {}
             self._qos_profile: Any = None
+            self._runtime_mode: str = "LIVE"
 
             self.declare_parameter("robot_namespace", "")
             self.declare_parameter("update_rate_hz", 10.0)
@@ -313,14 +329,20 @@ if HAS_ROS:
                 return
 
             qos = QoSProfile(depth=10)
-            subscription = self.create_subscription(
-                msg_cls,
-                normalized_topic,
-                lambda msg, topic_name=normalized_topic: self._on_dynamic_topic_message(
-                    topic_name, msg
-                ),
-                qos,
-            )
+            try:
+                subscription = self.create_subscription(
+                    msg_cls,
+                    normalized_topic,
+                    lambda msg, topic_name=normalized_topic: self._on_dynamic_topic_message(
+                        topic_name, msg
+                    ),
+                    qos,
+                )
+            except RuntimeError as exc:
+                self.get_logger().error(
+                    f"Cannot start echo for {normalized_topic} due to QoS conflict: {exc}"
+                )
+                return
             self._dynamic_subscriptions[normalized_topic] = subscription
             self.log_info(f"Echo started for {normalized_topic} [{ros_type}]")
 
@@ -344,6 +366,8 @@ if HAS_ROS:
 
         def _on_dynamic_topic_message(self, topic: str, message: Any) -> None:
             """Buffer incoming topic messages with throttling."""
+            if topic not in self._dynamic_subscriptions:
+                return
             now = time.monotonic()
             last_log_time = self._topic_last_log_time.get(topic, 0.0)
             if now - last_log_time < TOPIC_LOG_THROTTLE_SECONDS:
@@ -382,6 +406,68 @@ if HAS_ROS:
             msg.data = message
             self._string_publishers[topic].publish(msg)
             self.get_logger().info(f"Publishing to {topic}: {message}")
+
+        def publish_generic(self, topic: str, message: str) -> None:
+            """Publish JSON payload to topic using runtime message type resolution."""
+            normalized_topic = topic.strip()
+            if not normalized_topic:
+                self.log_info("Publish topic cannot be empty.")
+                return
+            try:
+                payload = json.loads(message)
+            except json.JSONDecodeError as exc:
+                self.get_logger().error(f"Invalid JSON for {normalized_topic}: {exc}")
+                return
+
+            topic_types = dict(self.get_topic_names_and_types())
+            if normalized_topic not in topic_types or not topic_types[normalized_topic]:
+                self.get_logger().error(f"Topic not found or without type: {normalized_topic}")
+                return
+            ros_type = topic_types[normalized_topic][0]
+            try:
+                msg_cls = get_message(ros_type)
+            except (AttributeError, ModuleNotFoundError, ValueError) as exc:
+                self.get_logger().error(
+                    f"Cannot resolve message type '{ros_type}' for {normalized_topic}: {exc}"
+                )
+                return
+            if not hasattr(self, "_publisher_cache"):
+                self._publisher_cache: dict[tuple[str, str], Any] = {}
+            cache_key = (normalized_topic, ros_type)
+            if cache_key not in self._publisher_cache:
+                self._publisher_cache[cache_key] = self.create_publisher(
+                    msg_cls, normalized_topic, self._qos_profile
+                )
+            msg = msg_cls()
+            if isinstance(payload, dict):
+                try:
+                    set_message_fields(msg, payload)
+                except (AttributeError, TypeError, ValueError) as exc:
+                    self.get_logger().error(
+                        f"Invalid message payload for {normalized_topic}: {exc}"
+                    )
+                    return
+            elif hasattr(msg, "data"):
+                setattr(msg, "data", payload)
+            else:
+                self.get_logger().error(
+                    f"Expected JSON object for {normalized_topic} [{ros_type}]"
+                )
+                return
+            self._publisher_cache[cache_key].publish(msg)
+            self.get_logger().info(f"Publishing to {normalized_topic}: {message}")
+
+        def set_runtime_mode(self, mode: str) -> None:
+            """Switch runtime mode used by GUI workflow."""
+            normalized_mode = mode.strip().upper()
+            if normalized_mode not in {"LIVE", "SIMULATED"}:
+                self.get_logger().error(f"Unknown runtime mode: {mode}")
+                return
+            if normalized_mode == self._runtime_mode:
+                self.get_logger().info(f"Runtime mode unchanged: {normalized_mode}")
+                return
+            self._runtime_mode = normalized_mode
+            self.log_info(f"Runtime mode switched to {normalized_mode}")
 
         def send_robot_command(self, command: str) -> None:
             """Publish a high-level robot command.

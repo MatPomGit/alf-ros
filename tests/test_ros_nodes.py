@@ -181,6 +181,22 @@ class TestGUINodeBatterySubscription:
         assert "get_message(" in source
         assert "create_subscription(" in source
 
+    def test_publish_generic_uses_json_decode(self) -> None:
+        """Generic publish should decode JSON payload before creating message."""
+        source = _get_source("alf_ros.alf_ros.nodes.gui_node")
+        assert "json.loads(message)" in source
+
+    def test_publish_generic_uses_publisher_cache(self) -> None:
+        """Generic publish should cache publishers by topic and message type."""
+        source = _get_source("alf_ros.alf_ros.nodes.gui_node")
+        assert "_publisher_cache" in source
+        assert "cache_key = (normalized_topic, ros_type)" in source
+
+    def test_runtime_mode_switch_support_present(self) -> None:
+        """GUI node and bridge should expose runtime mode switching hooks."""
+        source = _get_source("alf_ros.alf_ros.nodes.gui_node")
+        assert "def set_runtime_mode(" in source
+
 
 class TestRobotControllerWalkHandler:
     """Tests that the walk command is wired to a proper handler."""
