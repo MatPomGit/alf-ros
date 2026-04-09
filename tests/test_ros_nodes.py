@@ -156,6 +156,19 @@ class TestGUINodeBatterySubscription:
                 continue
             raise AssertionError("Expected ValueError for non-positive update rate")
 
+    def test_ros_bridge_exposes_graph_methods(self) -> None:
+        """ROSBridge should provide graph/service/action inspection helpers."""
+        source = _get_source("alf_ros.alf_ros.nodes.gui_node")
+        methods = _function_names_in_class(source, "ROSBridge")
+        expected = {
+            "get_service_names_and_types",
+            "get_action_names_and_types",
+            "get_publishers_info_by_topic",
+            "get_subscribers_info_by_topic",
+            "get_topic_graph",
+        }
+        assert expected.issubset(methods)
+
 
 class TestRobotControllerWalkHandler:
     """Tests that the walk command is wired to a proper handler."""

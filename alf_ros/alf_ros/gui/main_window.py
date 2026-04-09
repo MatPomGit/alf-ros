@@ -5,10 +5,9 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import (
-    QApplication,
     QFrame,
     QGroupBox,
     QHBoxLayout,
@@ -20,6 +19,7 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSpinBox,
     QStatusBar,
     QTabWidget,
     QTextEdit,
@@ -301,6 +301,99 @@ class ActionPanel(QWidget):
             self.btn_cancel_goal.setEnabled(False)
 
 
+class GraphPanel(QWidget):
+    """Panel for visualizing ROS2 topic graph with filtering and auto refresh."""
+
+    refresh_requested = pyqtSignal()
+    refresh_interval_changed = pyqtSignal(int)
+    refresh_paused_changed = pyqtSignal(bool)
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._graph_data: list[tuple[str, str, int, int]] = []
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        layout = QVBoxLayout(self)
+
+        title_row = QHBoxLayout()
+        title_row.addWidget(QLabel("<b>Graph ROS2 (topiki, publisher/subscriber)</b>"))
+        title_row.addStretch()
+        self.btn_refresh = QPushButton("🔄 Odśwież")
+        self.btn_refresh.clicked.connect(self.refresh_requested.emit)
+        title_row.addWidget(self.btn_refresh)
+        layout.addLayout(title_row)
+
+        filter_box = QGroupBox("Filtry")
+        filter_layout = QVBoxLayout(filter_box)
+
+        namespace_row = QHBoxLayout()
+        namespace_row.addWidget(QLabel("Namespace:"))
+        self.namespace_filter = QLineEdit()
+        self.namespace_filter.setPlaceholderText("/robot or /")
+        self.namespace_filter.textChanged.connect(self._render_graph)
+        namespace_row.addWidget(self.namespace_filter)
+        filter_layout.addLayout(namespace_row)
+
+        msg_type_row = QHBoxLayout()
+        msg_type_row.addWidget(QLabel("Typ wiadomości:"))
+        self.message_type_filter = QLineEdit()
+        self.message_type_filter.setPlaceholderText("std_msgs/msg/String")
+        self.message_type_filter.textChanged.connect(self._render_graph)
+        msg_type_row.addWidget(self.message_type_filter)
+        filter_layout.addLayout(msg_type_row)
+        layout.addWidget(filter_box)
+
+        refresh_box = QGroupBox("Auto-refresh")
+        refresh_layout = QHBoxLayout(refresh_box)
+        refresh_layout.addWidget(QLabel("Co"))
+        self.refresh_interval_spin = QSpinBox()
+        self.refresh_interval_spin.setRange(1, 3600)
+        self.refresh_interval_spin.setValue(5)
+        self.refresh_interval_spin.setSuffix(" s")
+        self.refresh_interval_spin.valueChanged.connect(self.refresh_interval_changed.emit)
+        refresh_layout.addWidget(self.refresh_interval_spin)
+        self.btn_pause = QPushButton("⏸ Pauza")
+        self.btn_pause.setCheckable(True)
+        self.btn_pause.toggled.connect(self._on_pause_toggled)
+        refresh_layout.addWidget(self.btn_pause)
+        refresh_layout.addStretch()
+        layout.addWidget(refresh_box)
+
+        self.graph_list = QListWidget()
+        self.graph_list.setAlternatingRowColors(True)
+        layout.addWidget(self.graph_list)
+
+    def _on_pause_toggled(self, paused: bool) -> None:
+        self.btn_pause.setText("▶ Wznów" if paused else "⏸ Pauza")
+        self.refresh_paused_changed.emit(paused)
+
+    def update_graph(self, graph_data: list[tuple[str, str, int, int]]) -> None:
+        """Store and render topic graph rows.
+
+        Args:
+            graph_data: Rows in format (topic_name, topic_type, publisher_count, subscriber_count).
+        """
+        self._graph_data = graph_data
+        self._render_graph()
+
+    def _render_graph(self) -> None:
+        namespace_filter = self.namespace_filter.text().strip()
+        msg_type_filter = self.message_type_filter.text().strip().lower()
+        self.graph_list.clear()
+        for topic, msg_type, pub_count, sub_count in sorted(self._graph_data):
+            if namespace_filter and not topic.startswith(namespace_filter):
+                continue
+            if msg_type_filter and msg_type_filter not in msg_type.lower():
+                continue
+            item = QListWidgetItem(
+                f"{topic}  [{msg_type}]  pub:{pub_count} / sub:{sub_count}"
+            )
+            item.setData(Qt.UserRole, topic)
+            item.setForeground(QColor("#AA66CC"))
+            self.graph_list.addItem(item)
+
+
 class RobotStatusPanel(QWidget):
     """Panel displaying Unitree G1 EDU robot status."""
 
@@ -434,6 +527,7 @@ class MainWindow(QMainWindow):
 
     node_refresh_requested = pyqtSignal()
     topic_refresh_requested = pyqtSignal()
+    graph_refresh_requested = pyqtSignal()
 
     def __init__(self, ros_bridge: object = None, parent: Optional[QWidget] = None) -> None:
         """Initialize the main window.
@@ -458,12 +552,17 @@ class MainWindow(QMainWindow):
         self.node_panel = NodePanel()
         self.topic_panel = TopicPanel()
         self.action_panel = ActionPanel()
+        self.graph_panel = GraphPanel()
         self.robot_panel = RobotStatusPanel()
+        self._known_topics: set[str] = set()
+        self._graph_refresh_timer = QTimer(self)
+        self._graph_refresh_timer.timeout.connect(self._on_refresh_graph)
 
         self.tabs.addTab(self.robot_panel, "🤖 Status robota")
         self.tabs.addTab(self.node_panel, "🔵 Węzły")
         self.tabs.addTab(self.topic_panel, "📡 Topiki")
         self.tabs.addTab(self.action_panel, "🎯 Akcje")
+        self.tabs.addTab(self.graph_panel, "🕸 Graph")
 
         main_layout.addWidget(self.tabs)
 
@@ -482,10 +581,15 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Gotowy — oczekiwanie na połączenie z ROS2...")
+        initial_interval_ms = self.graph_panel.refresh_interval_spin.value() * 1000
+        self._graph_refresh_timer.start(initial_interval_ms)
 
     def _connect_signals(self) -> None:
         self.node_panel.refresh_requested.connect(self._on_refresh_nodes)
         self.topic_panel.refresh_requested.connect(self._on_refresh_topics)
+        self.graph_panel.refresh_requested.connect(self._on_refresh_graph)
+        self.graph_panel.refresh_interval_changed.connect(self._on_graph_interval_changed)
+        self.graph_panel.refresh_paused_changed.connect(self._on_graph_pause_changed)
         self.topic_panel.echo_requested.connect(self._on_echo_topic)
         self.topic_panel.publish_requested.connect(self._on_publish_topic)
         self.action_panel.send_goal_requested.connect(self._on_send_action_goal)
@@ -559,3 +663,32 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("⚠️ STOP AWARYJNY!")
             if self._ros_bridge:
                 self._ros_bridge.emergency_stop()
+
+    def _on_graph_interval_changed(self, interval_seconds: int) -> None:
+        self._graph_refresh_timer.setInterval(interval_seconds * 1000)
+        self.log("DEBUG", f"Ustawiono auto-refresh graph: co {interval_seconds} s")
+
+    def _on_graph_pause_changed(self, paused: bool) -> None:
+        if paused:
+            self._graph_refresh_timer.stop()
+            self.log("INFO", "Auto-refresh graph: pauza")
+            return
+        interval_ms = self.graph_panel.refresh_interval_spin.value() * 1000
+        self._graph_refresh_timer.start(interval_ms)
+        self.log("INFO", "Auto-refresh graph: wznowiono")
+
+    def _on_refresh_graph(self) -> None:
+        if not self._ros_bridge:
+            self.graph_panel.update_graph([])
+            return
+        graph_data = self._ros_bridge.get_topic_graph()
+        self.graph_panel.update_graph(graph_data)
+        current_topics = {topic for topic, _, _, _ in graph_data}
+        appeared = sorted(current_topics - self._known_topics)
+        disappeared = sorted(self._known_topics - current_topics)
+        for topic in appeared:
+            self.log("INFO", f"Graph update: topic appeared: {topic}")
+        for topic in disappeared:
+            self.log("WARN", f"Graph update: topic disappeared: {topic}")
+        self._known_topics = current_topics
+        self.graph_refresh_requested.emit()
