@@ -8,7 +8,6 @@ from typing import Optional
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import (
-    QApplication,
     QFrame,
     QGroupBox,
     QHBoxLayout,
@@ -120,6 +119,8 @@ class TopicPanel(QWidget):
     """Panel for monitoring and publishing to ROS2 topics."""
 
     echo_requested = pyqtSignal(str)
+    stop_echo_requested = pyqtSignal(str)
+    stop_all_requested = pyqtSignal()
     publish_requested = pyqtSignal(str, str)
     refresh_requested = pyqtSignal()
 
@@ -153,6 +154,9 @@ class TopicPanel(QWidget):
         self.btn_echo = QPushButton("👂 Echo")
         self.btn_echo.clicked.connect(self._on_echo)
         echo_row.addWidget(self.btn_echo)
+        self.btn_stop_echo = QPushButton("⏹ Stop")
+        self.btn_stop_echo.clicked.connect(self._on_stop_echo)
+        echo_row.addWidget(self.btn_stop_echo)
         actions_layout.addLayout(echo_row)
 
         pub_row = QHBoxLayout()
@@ -164,6 +168,9 @@ class TopicPanel(QWidget):
         self.btn_publish.clicked.connect(self._on_publish)
         pub_row.addWidget(self.btn_publish)
         actions_layout.addLayout(pub_row)
+        self.btn_stop_all = QPushButton("⏹ Stop all")
+        self.btn_stop_all.clicked.connect(self.stop_all_requested.emit)
+        actions_layout.addWidget(self.btn_stop_all)
 
         layout.addWidget(actions_box)
 
@@ -195,6 +202,11 @@ class TopicPanel(QWidget):
         topic = self.echo_input.text().strip()
         if topic:
             self.echo_requested.emit(topic)
+
+    def _on_stop_echo(self) -> None:
+        topic = self.echo_input.text().strip()
+        if topic:
+            self.stop_echo_requested.emit(topic)
 
     def _on_publish(self) -> None:
         topic = self.echo_input.text().strip()
@@ -487,6 +499,8 @@ class MainWindow(QMainWindow):
         self.node_panel.refresh_requested.connect(self._on_refresh_nodes)
         self.topic_panel.refresh_requested.connect(self._on_refresh_topics)
         self.topic_panel.echo_requested.connect(self._on_echo_topic)
+        self.topic_panel.stop_echo_requested.connect(self._on_stop_echo_topic)
+        self.topic_panel.stop_all_requested.connect(self._on_stop_all_topics)
         self.topic_panel.publish_requested.connect(self._on_publish_topic)
         self.action_panel.send_goal_requested.connect(self._on_send_action_goal)
         self.action_panel.cancel_goal_requested.connect(self._on_cancel_action_goal)
@@ -525,6 +539,16 @@ class MainWindow(QMainWindow):
         self.log("INFO", f"Nasłuchiwanie topiku: {topic}")
         if self._ros_bridge:
             self._ros_bridge.echo_topic(topic)
+
+    def _on_stop_echo_topic(self, topic: str) -> None:
+        self.log("WARN", f"Zatrzymanie nasłuchu topiku: {topic}")
+        if self._ros_bridge:
+            self._ros_bridge.stop_echo_topic(topic)
+
+    def _on_stop_all_topics(self) -> None:
+        self.log("WARN", "Zatrzymanie nasłuchu wszystkich topików.")
+        if self._ros_bridge:
+            self._ros_bridge.stop_all_echoes()
 
     def _on_publish_topic(self, topic: str, message: str) -> None:
         self.log("INFO", f"Publikowanie na topik {topic}: {message}")

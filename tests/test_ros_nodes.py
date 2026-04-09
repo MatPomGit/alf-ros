@@ -156,6 +156,18 @@ class TestGUINodeBatterySubscription:
                 continue
             raise AssertionError("Expected ValueError for non-positive update rate")
 
+    def test_gui_node_uses_dynamic_subscription_registry(self) -> None:
+        """GUINode should keep runtime dynamic subscriptions in a dedicated registry."""
+        source = _get_source("alf_ros.alf_ros.nodes.gui_node")
+        assert "_dynamic_subscriptions" in source
+
+    def test_echo_topic_uses_runtime_type_resolution(self) -> None:
+        """Dynamic echo should resolve message types at runtime and create subscription."""
+        source = _get_source("alf_ros.alf_ros.nodes.gui_node")
+        assert "get_topic_names_and_types()" in source
+        assert "get_message(" in source
+        assert "create_subscription(" in source
+
 
 class TestRobotControllerWalkHandler:
     """Tests that the walk command is wired to a proper handler."""

@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 import threading
+import time
+from collections import deque
 from typing import Any, Optional
 
 try:
     import rclpy
+    from rclpy.qos import QoSProfile
     from rclpy.node import Node
     from std_msgs.msg import String, Bool
     from sensor_msgs.msg import JointState, BatteryState
     from geometry_msgs.msg import Twist
+    from rosidl_runtime_py.convert import message_to_ordereddict
+    from rosidl_runtime_py.utilities import get_message
 
     HAS_ROS = True
 except ImportError:
@@ -27,6 +33,10 @@ except ImportError:
     HAS_QT = False
 
 logger = logging.getLogger(__name__)
+MAX_TOPIC_LOG_BUFFER_SIZE = 300
+TOPIC_LOG_THROTTLE_SECONDS = 0.2
+MAX_TOPIC_LOG_TEXT_LENGTH = 800
+MAX_TOPIC_LOG_FLUSH_PER_TICK = 20
 
 JOINT_NAMES_G1 = [
     "left_hip_pitch_joint",
@@ -88,8 +98,16 @@ class ROSBridge:
         return [(name, types[0] if types else "?") for name, types in raw]
 
     def echo_topic(self, topic: str) -> None:
-        """Subscribe to a topic and log messages."""
-        self._node.log_info(f"Echo requested for: {topic}")
+        """Start dynamic echo for a topic."""
+        self._node.start_topic_echo(topic)
+
+    def stop_echo_topic(self, topic: str) -> None:
+        """Stop dynamic echo for a single topic."""
+        self._node.stop_topic_echo(topic)
+
+    def stop_all_echoes(self) -> None:
+        """Stop dynamic echo for all topics."""
+        self._node.stop_all_topic_echoes()
 
     def publish_to_topic(self, topic: str, message: str) -> None:
         """Publish a string message to a topic."""
@@ -123,6 +141,11 @@ if HAS_ROS:
             self._joint_states: dict[str, float] = {}
             self._battery_level: float = 0.0
             self._connected: bool = False
+            self._dynamic_subscriptions: dict[str, Any] = {}
+            self._topic_log_buffer: deque[tuple[str, str]] = deque(
+                maxlen=MAX_TOPIC_LOG_BUFFER_SIZE
+            )
+            self._topic_last_log_time: dict[str, float] = {}
 
             self.declare_parameter("robot_namespace", "")
             self.declare_parameter("update_rate_hz", 10.0)
@@ -178,7 +201,88 @@ if HAS_ROS:
                 self._window.status_bar.showMessage(f"Status: {msg.data}")
 
         def _update_gui(self) -> None:
-            pass
+            if not self._window:
+                return
+            for _ in range(MAX_TOPIC_LOG_FLUSH_PER_TICK):
+                if not self._topic_log_buffer:
+                    break
+                topic, text = self._topic_log_buffer.popleft()
+                self._window.log("DEBUG", f"[echo {topic}] {text}")
+
+        def start_topic_echo(self, topic: str) -> None:
+            """Create dynamic topic subscription and stream messages to GUI logs."""
+            normalized_topic = topic.strip()
+            if not normalized_topic:
+                self.log_info("Echo topic cannot be empty.")
+                return
+            if normalized_topic in self._dynamic_subscriptions:
+                self.log_info(f"Echo already active for: {normalized_topic}")
+                return
+
+            topic_types = dict(self.get_topic_names_and_types())
+            if normalized_topic not in topic_types or not topic_types[normalized_topic]:
+                self.log_info(f"Topic not found or without type: {normalized_topic}")
+                return
+
+            ros_type = topic_types[normalized_topic][0]
+            try:
+                msg_cls = get_message(ros_type)
+            except (AttributeError, ModuleNotFoundError, ValueError) as exc:
+                self.get_logger().error(
+                    f"Cannot resolve message type '{ros_type}' for {normalized_topic}: {exc}"
+                )
+                return
+
+            qos = QoSProfile(depth=10)
+            subscription = self.create_subscription(
+                msg_cls,
+                normalized_topic,
+                lambda msg, topic_name=normalized_topic: self._on_dynamic_topic_message(
+                    topic_name, msg
+                ),
+                qos,
+            )
+            self._dynamic_subscriptions[normalized_topic] = subscription
+            self.log_info(f"Echo started for {normalized_topic} [{ros_type}]")
+
+        def stop_topic_echo(self, topic: str) -> None:
+            """Stop dynamic subscription for a single topic."""
+            normalized_topic = topic.strip()
+            subscription = self._dynamic_subscriptions.pop(normalized_topic, None)
+            if subscription is None:
+                self.log_info(f"Echo was not active for: {normalized_topic}")
+                return
+            self.destroy_subscription(subscription)
+            self._topic_last_log_time.pop(normalized_topic, None)
+            self.log_info(f"Echo stopped for {normalized_topic}")
+
+        def stop_all_topic_echoes(self) -> None:
+            """Stop all dynamic subscriptions created by the GUI echo feature."""
+            topics = list(self._dynamic_subscriptions.keys())
+            for topic in topics:
+                self.stop_topic_echo(topic)
+            self.log_info("All dynamic topic echoes stopped.")
+
+        def _on_dynamic_topic_message(self, topic: str, message: Any) -> None:
+            """Buffer incoming topic messages with throttling."""
+            now = time.monotonic()
+            last_log_time = self._topic_last_log_time.get(topic, 0.0)
+            if now - last_log_time < TOPIC_LOG_THROTTLE_SECONDS:
+                return
+            self._topic_last_log_time[topic] = now
+            serialized = self._serialize_message_for_log(message)
+            self._topic_log_buffer.append((topic, serialized))
+
+        def _serialize_message_for_log(self, message: Any) -> str:
+            """Serialize ROS message to compact human-readable text."""
+            try:
+                payload = message_to_ordereddict(message)
+                text = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+            except TypeError:
+                text = str(message)
+            if len(text) > MAX_TOPIC_LOG_TEXT_LENGTH:
+                return f"{text[:MAX_TOPIC_LOG_TEXT_LENGTH]}… [truncated]"
+            return text
 
         def publish_string(self, topic: str, message: str) -> None:
             """Publish a string message to a topic.
@@ -236,6 +340,11 @@ if HAS_ROS:
                 window: The MainWindow instance.
             """
             self._window = window
+
+        def destroy_node(self) -> bool:
+            """Release dynamic subscriptions before node shutdown."""
+            self.stop_all_topic_echoes()
+            return super().destroy_node()
 
 
 def main(args: Optional[list[str]] = None) -> None:

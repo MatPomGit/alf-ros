@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import sys
-from typing import Optional
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -216,6 +215,19 @@ class TestTopicPanel:
         topic_panel.pub_input.setText('{"data": 42}')
         topic_panel.btn_publish.click()
         assert received == [("/my_topic", '{"data": 42}')]
+
+    def test_stop_echo_signal_emitted_with_topic_name(self, topic_panel) -> None:
+        received: list[str] = []
+        topic_panel.stop_echo_requested.connect(received.append)
+        topic_panel.echo_input.setText("/test_topic")
+        topic_panel.btn_stop_echo.click()
+        assert received == ["/test_topic"]
+
+    def test_stop_all_signal_emitted(self, topic_panel) -> None:
+        received: list[None] = []
+        topic_panel.stop_all_requested.connect(lambda: received.append(None))
+        topic_panel.btn_stop_all.click()
+        assert len(received) == 1
 
 
 # ---------------------------------------------------------------------------
