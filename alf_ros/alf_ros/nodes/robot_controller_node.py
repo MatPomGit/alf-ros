@@ -11,6 +11,7 @@ try:
     from rclpy.node import Node
     from sensor_msgs.msg import JointState
     from std_msgs.msg import Bool, String
+    from .qos_utils import build_qos_profile, log_network_settings, qos_profile_to_text
 
     HAS_ROS = True
 except ImportError:
@@ -70,9 +71,27 @@ if HAS_ROS:
             self.declare_parameter("publish_rate_hz", 50.0)
             self.declare_parameter("max_linear_vel", 0.5)
             self.declare_parameter("max_angular_vel", 1.0)
+            self.declare_parameter("qos_preset", "reliable_control")
+            self.declare_parameter("qos_reliability", "reliable")
+            self.declare_parameter("qos_durability", "volatile")
+            self.declare_parameter("qos_history", "keep_last")
+            self.declare_parameter("qos_depth", 10)
+            self.declare_parameter("ros_domain_id", 0)
+            self.declare_parameter("localhost_only", False)
+            self.declare_parameter("rmw_implementation", "")
 
             ns = self.get_parameter("robot_namespace").value
             prefix = f"/{ns}" if ns else ""
+            qos_profile = build_qos_profile(
+                preset=str(self.get_parameter("qos_preset").value),
+                reliability=str(self.get_parameter("qos_reliability").value),
+                durability=str(self.get_parameter("qos_durability").value),
+                history=str(self.get_parameter("qos_history").value),
+                depth=int(self.get_parameter("qos_depth").value),
+            )
+            ros_domain_id = int(self.get_parameter("ros_domain_id").value)
+            localhost_only = bool(self.get_parameter("localhost_only").value)
+            rmw_implementation = str(self.get_parameter("rmw_implementation").value)
 
             self._current_mode: str = "IDLE"
             self._estop_active: bool = False
@@ -81,24 +100,33 @@ if HAS_ROS:
             self._publish_rate_hz = float(self.get_parameter("publish_rate_hz").value)
 
             self._status_pub = self.create_publisher(
-                String, f"{prefix}/alf_ros/status", 10
+                String, f"{prefix}/alf_ros/status", qos_profile
             )
             self._joint_cmd_pub = self.create_publisher(
-                JointState, f"{prefix}/joint_commands", 10
+                JointState, f"{prefix}/joint_commands", qos_profile
             )
-            self._cmd_vel_pub = self.create_publisher(Twist, f"{prefix}/cmd_vel", 10)
+            self._cmd_vel_pub = self.create_publisher(Twist, f"{prefix}/cmd_vel", qos_profile)
 
             self._command_sub = self.create_subscription(
-                String, f"{prefix}/alf_ros/command", self._on_command, 10
+                String, f"{prefix}/alf_ros/command", self._on_command, qos_profile
             )
             self._estop_sub = self.create_subscription(
-                Bool, f"{prefix}/alf_ros/emergency_stop", self._on_estop, 10
+                Bool, f"{prefix}/alf_ros/emergency_stop", self._on_estop, qos_profile
             )
 
             timer_period = 1.0 / self._publish_rate_hz if self._publish_rate_hz > 0.0 else 1.0
             self._status_timer = self.create_timer(timer_period, self._publish_status)
 
-            self.get_logger().info("Robot controller node initialized")
+            self.get_logger().info(
+                "Robot controller node initialized with QoS: "
+                f"{qos_profile_to_text(qos_profile)}"
+            )
+            log_network_settings(
+                self,
+                ros_domain_id=ros_domain_id,
+                localhost_only=localhost_only,
+                rmw=rmw_implementation,
+            )
             self._publish_status()
 
         def _on_command(self, msg: String) -> None:

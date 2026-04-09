@@ -13,6 +13,7 @@ try:
     from std_msgs.msg import String, Bool
     from sensor_msgs.msg import JointState, BatteryState
     from geometry_msgs.msg import Twist
+    from .qos_utils import build_qos_profile, log_network_settings, qos_profile_to_text
 
     HAS_ROS = True
 except ImportError:
@@ -123,39 +124,69 @@ if HAS_ROS:
             self._joint_states: dict[str, float] = {}
             self._battery_level: float = 0.0
             self._connected: bool = False
+            self._qos_profile: Any = None
 
             self.declare_parameter("robot_namespace", "")
             self.declare_parameter("update_rate_hz", 10.0)
+            self.declare_parameter("qos_preset", "sensor_data")
+            self.declare_parameter("qos_reliability", "reliable")
+            self.declare_parameter("qos_durability", "volatile")
+            self.declare_parameter("qos_history", "keep_last")
+            self.declare_parameter("qos_depth", 10)
+            self.declare_parameter("ros_domain_id", 0)
+            self.declare_parameter("localhost_only", False)
+            self.declare_parameter("rmw_implementation", "")
 
             ns = self.get_parameter("robot_namespace").value
             prefix = f"/{ns}" if ns else ""
+            qos_profile = build_qos_profile(
+                preset=str(self.get_parameter("qos_preset").value),
+                reliability=str(self.get_parameter("qos_reliability").value),
+                durability=str(self.get_parameter("qos_durability").value),
+                history=str(self.get_parameter("qos_history").value),
+                depth=int(self.get_parameter("qos_depth").value),
+            )
+            ros_domain_id = int(self.get_parameter("ros_domain_id").value)
+            localhost_only = bool(self.get_parameter("localhost_only").value)
+            rmw_implementation = str(self.get_parameter("rmw_implementation").value)
+            self._qos_profile = qos_profile
 
-            self._cmd_vel_pub = self.create_publisher(Twist, f"{prefix}/cmd_vel", 10)
+            self._cmd_vel_pub = self.create_publisher(
+                Twist, f"{prefix}/cmd_vel", qos_profile
+            )
             self._command_pub = self.create_publisher(
-                String, f"{prefix}/alf_ros/command", 10
+                String, f"{prefix}/alf_ros/command", qos_profile
             )
             self._estop_pub = self.create_publisher(
-                Bool, f"{prefix}/alf_ros/emergency_stop", 10
+                Bool, f"{prefix}/alf_ros/emergency_stop", qos_profile
             )
 
             self._joint_state_sub = self.create_subscription(
-                JointState, f"{prefix}/joint_states", self._on_joint_states, 10
+                JointState, f"{prefix}/joint_states", self._on_joint_states, qos_profile
             )
             self._battery_sub = self.create_subscription(
                 BatteryState,
                 f"{prefix}/battery_state",
                 self._on_battery,
-                10,
+                qos_profile,
             )
             self._status_sub = self.create_subscription(
-                String, f"{prefix}/alf_ros/status", self._on_status, 10
+                String, f"{prefix}/alf_ros/status", self._on_status, qos_profile
             )
 
             rate = float(self.get_parameter("update_rate_hz").value)
             timer_period = _compute_update_period(rate)
             self._update_timer = self.create_timer(timer_period, self._update_gui)
 
-            self.get_logger().info("GUI node initialized")
+            self.get_logger().info(
+                f"GUI node initialized with QoS: {qos_profile_to_text(qos_profile)}"
+            )
+            log_network_settings(
+                self,
+                ros_domain_id=ros_domain_id,
+                localhost_only=localhost_only,
+                rmw=rmw_implementation,
+            )
 
         def _on_joint_states(self, msg: Any) -> None:
             states = {name: pos for name, pos in zip(msg.name, msg.position)}
@@ -192,7 +223,9 @@ if HAS_ROS:
             if not hasattr(self, "_string_publishers"):
                 self._string_publishers: dict[str, Any] = {}
             if topic not in self._string_publishers:
-                self._string_publishers[topic] = self.create_publisher(String, topic, 10)
+                self._string_publishers[topic] = self.create_publisher(
+                    String, topic, self._qos_profile
+                )
             msg = String()
             msg.data = message
             self._string_publishers[topic].publish(msg)
