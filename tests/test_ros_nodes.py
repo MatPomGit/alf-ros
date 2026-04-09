@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import importlib
 import inspect
+from pathlib import Path
 from unittest.mock import MagicMock
 
 
@@ -254,3 +255,54 @@ class TestRobotControllerWalkHandler:
         msg.data = "walk"
         fake._on_command(msg)
         assert called == ["walk"]
+
+
+class TestQoSAndNetworkConfiguration:
+    """Tests for QoS preset and ROS network parameter wiring."""
+
+    def test_qos_utils_defines_required_presets(self) -> None:
+        from alf_ros.alf_ros.nodes.qos_utils import QOS_PRESETS
+
+        assert {"sensor_data", "reliable_control", "latched_status"} <= set(QOS_PRESETS.keys())
+
+    def test_gui_node_declares_qos_and_network_parameters(self) -> None:
+        source = _get_source("alf_ros.alf_ros.nodes.gui_node")
+        expected = {
+            "qos_preset",
+            "qos_reliability",
+            "qos_durability",
+            "qos_history",
+            "qos_depth",
+            "ros_domain_id",
+            "localhost_only",
+            "rmw_implementation",
+        }
+        for name in expected:
+            assert f'declare_parameter("{name}"' in source
+
+    def test_controller_declares_qos_and_network_parameters(self) -> None:
+        source = _get_source("alf_ros.alf_ros.nodes.robot_controller_node")
+        expected = {
+            "qos_preset",
+            "qos_reliability",
+            "qos_durability",
+            "qos_history",
+            "qos_depth",
+            "ros_domain_id",
+            "localhost_only",
+            "rmw_implementation",
+        }
+        for name in expected:
+            assert f'declare_parameter("{name}"' in source
+
+    def test_params_yaml_contains_qos_presets_and_network_fields(self) -> None:
+        params_path = Path("alf_ros/config/params.yaml")
+        text = params_path.read_text(encoding="utf-8")
+        for expected in (
+            'qos_preset: "sensor_data"',
+            'qos_preset: "reliable_control"',
+            "ros_domain_id: 0",
+            "localhost_only: false",
+            'rmw_implementation: ""',
+        ):
+            assert expected in text

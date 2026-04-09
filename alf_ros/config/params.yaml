@@ -7,11 +7,33 @@ alf_ros_controller:
     publish_rate_hz: 50.0
     max_linear_vel: 0.5      # m/s — safe limit for G1 EDU
     max_angular_vel: 1.0     # rad/s
+    # QoS preset options: sensor_data | reliable_control | latched_status
+    qos_preset: "reliable_control"
+    # Manual QoS overrides (used when preset is not recognized)
+    qos_reliability: "reliable"        # reliable | best_effort
+    qos_durability: "volatile"         # volatile | transient_local
+    qos_history: "keep_last"           # keep_last | keep_all
+    qos_depth: 10
+    # DDS networking settings (logged on startup)
+    ros_domain_id: 0
+    localhost_only: false
+    rmw_implementation: ""
 
 alf_ros_gui:
   ros__parameters:
     robot_namespace: ""
     update_rate_hz: 10.0
+    # QoS preset options: sensor_data | reliable_control | latched_status
+    qos_preset: "sensor_data"
+    # Manual QoS overrides (used when preset is not recognized)
+    qos_reliability: "best_effort"     # reliable | best_effort
+    qos_durability: "volatile"         # volatile | transient_local
+    qos_history: "keep_last"           # keep_last | keep_all
+    qos_depth: 5
+    # DDS networking settings (logged on startup)
+    ros_domain_id: 0
+    localhost_only: false
+    rmw_implementation: ""
 
 alf_ros_monitor:
   ros__parameters:
